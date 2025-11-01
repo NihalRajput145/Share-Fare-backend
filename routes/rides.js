@@ -5,18 +5,33 @@ const RideRequest = require("../models/RideRequest");
 // ✅ CREATE a new ride
 router.post("/add", async (req, res) => {
   try {
+    const { name, contact, pickup, destination, datetime, seatsAvailable, notes, pickupCoords, destinationCoords } = req.body;
+
+    // Validate required fields
+    if (!name || !contact || !pickup || !destination || !datetime) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
     // Generate a unique random ID for this creator
     const creatorId = Math.floor(100000 + Math.random() * 900000).toString();
 
     const ride = new RideRequest({
-      ...req.body,
-      creatorId, // attach unique id
+      name,
+      contact,
+      pickup,
+      destination,
+      datetime,
+      seatsAvailable,
+      notes,
+      pickupCoords,
+      destinationCoords,
+      creatorId,
     });
 
     await ride.save();
     res.status(201).json({ message: "Ride created successfully!", ride });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Error creating ride:", err);
     res.status(500).json({ message: "Error creating ride" });
   }
 });
@@ -27,6 +42,7 @@ router.get("/", async (req, res) => {
     const rides = await RideRequest.find().sort({ createdAt: -1 });
     res.json(rides);
   } catch (err) {
+    console.error("❌ Error fetching rides:", err);
     res.status(500).json({ message: "Error fetching rides" });
   }
 });
@@ -35,16 +51,16 @@ router.get("/", async (req, res) => {
 router.post("/find", async (req, res) => {
   try {
     const { pickup, destination } = req.body;
+
     const rides = await RideRequest.find({
-      $and: [
-        { destination: { $regex: destination, $options: "i" } },
-        { pickup: { $regex: pickup, $options: "i" } },
-      ],
+      pickup: { $regex: pickup, $options: "i" },
+      destination: { $regex: destination, $options: "i" },
+      isFull: false, // ✅ Only show rides that still have seats
     }).sort({ createdAt: -1 });
 
     res.json(rides);
   } catch (err) {
-    console.error(err);
+    console.error("❌ Error finding rides:", err);
     res.status(500).json({ message: "Error finding rides" });
   }
 });
@@ -58,12 +74,19 @@ router.post("/:rideId/request", async (req, res) => {
     const ride = await RideRequest.findById(rideId);
     if (!ride) return res.status(404).json({ message: "Ride not found" });
 
+    // Prevent duplicate join requests
+    const alreadyRequested = ride.pendingJoinRequests.some(
+      (r) => r.contact === contact
+    );
+    if (alreadyRequested)
+      return res.status(400).json({ message: "You have already requested to join this ride." });
+
     ride.pendingJoinRequests.push({ name, contact, message });
     await ride.save();
 
     res.json({ message: "Join request sent!" });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Error sending join request:", err);
     res.status(500).json({ message: "Error sending join request" });
   }
 });
@@ -76,8 +99,7 @@ router.patch("/:rideId/accept/:requestIndex", async (req, res) => {
     if (!ride) return res.status(404).json({ message: "Ride not found" });
 
     const request = ride.pendingJoinRequests[requestIndex];
-    if (!request)
-      return res.status(404).json({ message: "Request not found" });
+    if (!request) return res.status(404).json({ message: "Request not found" });
 
     ride.joinedUsers.push({
       name: request.name,
@@ -92,7 +114,7 @@ router.patch("/:rideId/accept/:requestIndex", async (req, res) => {
     await ride.save();
     res.json({ message: "Join request accepted!", ride });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Error accepting request:", err);
     res.status(500).json({ message: "Error accepting request" });
   }
 });
@@ -109,12 +131,12 @@ router.patch("/:rideId/reject/:requestIndex", async (req, res) => {
 
     res.json({ message: "Join request rejected!" });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Error rejecting request:", err);
     res.status(500).json({ message: "Error rejecting request" });
   }
 });
 
-// GET rides created by a specific user
+// ✅ GET rides created by a specific user
 router.get("/my/:creatorId", async (req, res) => {
   try {
     const rides = await RideRequest.find({ creatorId: req.params.creatorId }).sort({
@@ -122,16 +144,18 @@ router.get("/my/:creatorId", async (req, res) => {
     });
     res.json(rides);
   } catch (err) {
+    console.error("❌ Error fetching user rides:", err);
     res.status(500).json({ message: "Error fetching your rides" });
   }
 });
 
-// DELETE a ride
+// ✅ DELETE a ride
 router.delete("/:rideId", async (req, res) => {
   try {
     await RideRequest.findByIdAndDelete(req.params.rideId);
     res.json({ message: "Ride deleted successfully" });
   } catch (err) {
+    console.error("❌ Error deleting ride:", err);
     res.status(500).json({ message: "Error deleting ride" });
   }
 });

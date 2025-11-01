@@ -4,7 +4,7 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const rideRoutes = require("./routes/rides");
 
-dotenv.config(); // ✅ Load .env
+dotenv.config();
 
 const app = express();
 
@@ -23,6 +23,11 @@ mongoose
 
 // Routes
 app.use("/api/rides", rideRoutes);
+
+// Health Check Route (optional)
+app.get("/", (req, res) => {
+  res.send("✅ Rideshare backend is running!");
+});
 
 // Server Start
 const PORT = process.env.PORT || 5000;
