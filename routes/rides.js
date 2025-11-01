@@ -5,16 +5,25 @@ const RideRequest = require("../models/RideRequest");
 // ✅ CREATE a new ride
 router.post("/add", async (req, res) => {
   try {
-    const { name, contact, pickup, destination, datetime, seatsAvailable, notes, pickupCoords, destinationCoords } = req.body;
+    const {
+      name,
+      contact,
+      pickup,
+      destination,
+      datetime,
+      seatsAvailable,
+      notes,
+      pickupCoords,
+      destinationCoords,
+      creatorId, // ✅ use this from frontend
+    } = req.body;
 
     // Validate required fields
-    if (!name || !contact || !pickup || !destination || !datetime) {
+    if (!name || !contact || !pickup || !destination || !datetime || !creatorId) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // Generate a unique random ID for this creator
-    const creatorId = Math.floor(100000 + Math.random() * 900000).toString();
-
+    // ✅ Do NOT overwrite creatorId — use frontend one
     const ride = new RideRequest({
       name,
       contact,
@@ -55,7 +64,7 @@ router.post("/find", async (req, res) => {
     const rides = await RideRequest.find({
       pickup: { $regex: pickup, $options: "i" },
       destination: { $regex: destination, $options: "i" },
-      isFull: false, // ✅ Only show rides that still have seats
+      isFull: false,
     }).sort({ createdAt: -1 });
 
     res.json(rides);
@@ -74,14 +83,13 @@ router.post("/:rideId/request", async (req, res) => {
     const ride = await RideRequest.findById(rideId);
     if (!ride) return res.status(404).json({ message: "Ride not found" });
 
-    // Prevent duplicate join requests
     const alreadyRequested = ride.pendingJoinRequests.some(
       (r) => r.contact === contact
     );
     if (alreadyRequested)
       return res.status(400).json({ message: "You have already requested to join this ride." });
 
-    ride.pendingJoinRequests.push({ name, contact, message });
+    ride.pendingJoinRequests.push({ name, contact, message, status: "pending" });
     await ride.save();
 
     res.json({ message: "Join request sent!" });
@@ -101,12 +109,14 @@ router.patch("/:rideId/accept/:requestIndex", async (req, res) => {
     const request = ride.pendingJoinRequests[requestIndex];
     if (!request) return res.status(404).json({ message: "Request not found" });
 
+    // Move to joinedUsers
     ride.joinedUsers.push({
       name: request.name,
       contact: request.contact,
     });
 
-    ride.pendingJoinRequests.splice(requestIndex, 1);
+    // Update status
+    ride.pendingJoinRequests[requestIndex].status = "accepted";
 
     if (ride.seatsAvailable > 0) ride.seatsAvailable -= 1;
     if (ride.seatsAvailable === 0) ride.isFull = true;
@@ -126,7 +136,7 @@ router.patch("/:rideId/reject/:requestIndex", async (req, res) => {
     const ride = await RideRequest.findById(rideId);
     if (!ride) return res.status(404).json({ message: "Ride not found" });
 
-    ride.pendingJoinRequests.splice(requestIndex, 1);
+    ride.pendingJoinRequests[requestIndex].status = "rejected";
     await ride.save();
 
     res.json({ message: "Join request rejected!" });
